@@ -9,7 +9,7 @@
 
 Summary:	Robust, small and high performance HTTP and reverse proxy server
 Name:		nginx
-Version:	1.6.3
+Version:	1.8.0
 Release:	1
 Group:		System/Servers
 # BSD License (two clause)
@@ -49,7 +49,7 @@ proxy server written by Igor Sysoev.
 %setup -q
 
 %build
-%serverbuild
+%setup_compile_flags
 ./configure \
 	--user=%{nginx_user} \
 	--group=%{nginx_group} \
@@ -61,7 +61,7 @@ proxy server written by Igor Sysoev.
 	--http-client-body-temp-path=%{nginx_home_tmp}/client_body \
 	--http-proxy-temp-path=%{nginx_home_tmp}/proxy \
 	--http-fastcgi-temp-path=%{nginx_home_tmp}/fastcgi \
-	--pid-path=/var/run/%{name}/%{name}.pid \
+	--pid-path=/run/%{name}.pid \
 	--lock-path=/var/lock/subsys/%{name} \
 	--with-file-aio \
 	--with-ipv6 \
@@ -168,5 +168,3 @@ install -m0644 man/*.8 %{buildroot}%{_mandir}/man8/
 %attr(-,%{nginx_user},%{nginx_group}) %dir %{nginx_home}
 %attr(-,%{nginx_user},%{nginx_group}) %dir %{nginx_home_tmp}
 %attr(-,%{nginx_user},%{nginx_group}) %dir %{nginx_logdir}
-%attr(-,%{nginx_user},%{nginx_group}) %dir /var/run/%{name}
-
