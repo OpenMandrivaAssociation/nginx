@@ -10,14 +10,13 @@
 Summary:	Robust, small and high performance HTTP and reverse proxy server
 Name:		nginx
 Version:	1.8.1
-Release:	1
+Release:	1.1
 Group:		System/Servers
 # BSD License (two clause)
 # http://www.freebsd.org/copyright/freebsd-license.html
 License:	BSD
 Url:		http://nginx.net/
 Source0:	http://nginx.org/download/nginx-%{version}.tar.gz
-Source1:	http://nginx.org/download/nginx-%{version}.tar.gz.asc
 Source2:	nginx.service
 Source3:	nginx.logrotate
 Source4:	virtual.conf
