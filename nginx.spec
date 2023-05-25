@@ -13,20 +13,20 @@
 Summary:	Robust, small and high performance HTTP and reverse proxy server
 Name:		nginx
 Version:	1.25.0
-Release:	1
+Release:	2
 Group:		System/Servers
 # BSD License (two clause)
 # http://www.freebsd.org/copyright/freebsd-license.html
 License:	BSD
 Url:		http://nginx.net/
 Source0:	http://nginx.org/download/%{name}-%{version}.tar.gz
-Source1:	nginx.service
-Source2:	nginx.logrotate
-Source3:	virtual.conf
-Source4:	ssl.conf
-Source5:	nginx.conf
-Source6:	php.conf
-Source7:	default.conf
+Source1:	https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/archive/refs/tags/v1.2.2-r1.tar.gz
+Source51:	nginx.service
+Source52:	nginx.logrotate
+Source53:	ssl.conf
+Source54:	nginx.conf
+Source55:	php.conf
+Source56:	default.conf
 Source100:	index.html
 Source101:	poweredby.png
 Source102:	nginx-logo.png
@@ -44,6 +44,7 @@ BuildRequires:	pkgconfig(zlib)
 BuildRequires:	systemd-macros
 # For _create_ssl_certificate macro
 BuildRequires:	rpm-helper
+Requires:	rpm-helper
 Requires:	pcre
 Requires:	openssl
 Provides:	webserver
@@ -52,6 +53,10 @@ Prereq:		www-user
 Requires(pre):	www-user
 %systemd_requires
 
+# As of 1.25.0, the quic patches are merged and the separate quic
+# branch packages are obsolete.
+%rename nginx-quic
+
 %description
 Nginx [engine x] is an HTTP(S) server, HTTP(S) reverse proxy and IMAP/POP3
 proxy server written by Igor Sysoev.
@@ -59,7 +64,8 @@ proxy server written by Igor Sysoev.
 %package mod-http-perl
 Summary:	Nginx HTTP perl module
 Group:		System/Servers
-Requires:	%{name}
+Requires:	%{name} = %{EVRD}
+%rename nginx-quic-mod-http-perl
 
 %description mod-http-perl
 %{summary}.
@@ -67,21 +73,23 @@ Requires:	%{name}
 %package mod-http-geoip
 Summary:	Nginx HTTP geoip module
 Group:		System/Servers
-Requires:	%{name}
+Requires:	%{name} = %{EVRD}
 Requires:	geoip
+%rename nginx-quic-mod-http-geoip
 
 %description mod-http-geoip
 %{summary}.
 
 %package mod-http-image-filter
 Summary:	Nginx HTTP image filter module
-Requires:	%{name}
+Requires:	%{name} = %{EVRD}
+%rename nginx-quic-mod-http-image-filter
 
 %description mod-http-image-filter
 %{summary}.
 
 %prep
-%autosetup -p1
+%autosetup -p1 -a1
 
 %build
 %serverbuild_hardened
@@ -91,20 +99,22 @@ Requires:	%{name}
 	--user=www \
 	--group=www \
 	--prefix=%{nginx_datadir} \
-	--sbin-path=%{_sbindir}/%{name} \
-	--conf-path=%{nginx_confdir}/%{name}.conf \
+	--sbin-path=%{_sbindir}/nginx \
+	--conf-path=%{nginx_confdir}/nginx.conf \
 	--error-log-path=%{nginx_logdir}/error.log \
 	--http-log-path=%{nginx_logdir}/access.log \
 	--http-client-body-temp-path=%{nginx_home_tmp}/client_body \
 	--http-proxy-temp-path=%{nginx_home_tmp}/proxy \
 	--http-fastcgi-temp-path=%{nginx_home_tmp}/fastcgi \
-	--pid-path=/run/%{name}.pid \
-	--lock-path=/var/lock/subsys/%{name} \
+	--pid-path=/run/nginx.pid \
+	--lock-path=/var/lock/subsys/nginx \
 	--modules-path=%{nginx_modulesdir} \
+	--add-module=nginx-rtmp-module-* \
 	--with-file-aio \
 	--with-ipv6 \
 	--with-http_ssl_module \
 	--with-http_v2_module \
+	--with-http_v3_module \
 	--with-http_slice_module \
 	--with-http_realip_module \
 	--with-http_addition_module \
@@ -146,21 +156,21 @@ find %{buildroot} -type f -name '*.so' -exec chmod 0755 {} \;
 chmod 0755 %{buildroot}%{_sbindir}/nginx
 
 # Install our configs...
-install -p -D -m 0644 %{S:1} %{buildroot}%{_unitdir}/nginx.service
-install -p -D -m 0644 %{S:2} %{buildroot}%{_sysconfdir}/logrotate.d/%{name}
+install -p -D -m 0644 %{S:51} %{buildroot}%{_unitdir}/nginx.service
+install -p -D -m 0644 %{S:52} %{buildroot}%{_sysconfdir}/logrotate.d/nginx
 install -p -d -m 0755 %{buildroot}%{nginx_confdir}/conf.d
-install -p -m 0644 %{S:3} %{S:4} %{buildroot}%{nginx_confdir}/conf.d
-install -p -D -m 0644 %{S:5} %{buildroot}%{nginx_confdir}/
-install -p -D -m 0644 %{S:5} %{buildroot}%{nginx_confdir}/nginx.conf.default
-install -p -D -m 0644 %{S:6} %{buildroot}%{nginx_confdir}/
-install -p -D -m 0644 %{S:6} %{buildroot}%{nginx_confdir}/php.conf.default
+install -p -m 0644 %{S:53} %{buildroot}%{nginx_confdir}/conf.d
+install -p -D -m 0644 %{S:54} %{buildroot}%{nginx_confdir}/
+install -p -D -m 0644 %{S:54} %{buildroot}%{nginx_confdir}/nginx.conf.default
+install -p -D -m 0644 %{S:55} %{buildroot}%{nginx_confdir}/
+install -p -D -m 0644 %{S:55} %{buildroot}%{nginx_confdir}/php.conf.default
 install -p -d -m 0755 %{buildroot}%{nginx_home_tmp}
 install -p -d -m 0755 %{buildroot}%{nginx_logdir}
 install -p -d -m 0755 %{buildroot}%{nginx_webroot}
 install -p -d -m 0755 %{buildroot}%{nginx_modulesdir}
 install -p -d -m 0755 %{buildroot}%{nginx_datadir}/modules
 mkdir -p %{buildroot}%{nginx_confdir}/sites-available %{buildroot}%{nginx_confdir}/sites-enabled
-install -p -D -m 0644 %{S:7} %{buildroot}%{nginx_confdir}/sites-available/default.conf
+install -p -D -m 0644 %{S:56} %{buildroot}%{nginx_confdir}/sites-available/default.conf
 ln -s ../sites-available/default.conf %{buildroot}%{nginx_confdir}/sites-enabled/
 
 install -p -m 0644 %{S:100} %{S:101} %{S:102} %{S:103} %{S:104} %{buildroot}%{nginx_webroot}
@@ -213,8 +223,8 @@ fi
 %dir %{nginx_datadir}
 %dir %{nginx_datadir}/modules
 %dir %{nginx_modulesdir}
-%{_sbindir}/%{name}
-%{_mandir}/man3/%{name}.3pm*
+%{_sbindir}/nginx
+%{_mandir}/man3/nginx.3pm*
 %{_mandir}/man8/*
 %{_presetdir}/86-nginx.preset
 %{_unitdir}/nginx.service
@@ -223,7 +233,7 @@ fi
 /srv/www/html/*.png
 %dir %{nginx_confdir}
 %config(noreplace) %{nginx_confdir}/win-utf
-%config(noreplace) %{nginx_confdir}/%{name}.conf.default
+%config(noreplace) %{nginx_confdir}/nginx.conf.default
 %config(noreplace) %{nginx_confdir}/scgi_params
 %config(noreplace) %{nginx_confdir}/scgi_params.default
 %config(noreplace) %{nginx_confdir}/fastcgi.conf
@@ -233,7 +243,7 @@ fi
 %config %{nginx_confdir}/fastcgi_params.default
 %config(noreplace) %{nginx_confdir}/koi-win
 %config(noreplace) %{nginx_confdir}/koi-utf
-%config(noreplace) %{nginx_confdir}/%{name}.conf
+%config(noreplace) %{nginx_confdir}/nginx.conf
 %config(noreplace) %{nginx_confdir}/mime.types
 %config(noreplace) %{nginx_confdir}/php.conf
 %config %{nginx_confdir}/php.conf.default
@@ -243,7 +253,7 @@ fi
 %config(noreplace) %{nginx_confdir}/sites-enabled/default.conf
 %config(noreplace) %{nginx_confdir}/uwsgi_params
 %config(noreplace) %{nginx_confdir}/uwsgi_params.default
-%config(noreplace) %{_sysconfdir}/logrotate.d/%{name}
+%config(noreplace) %{_sysconfdir}/logrotate.d/nginx
 %attr(-,www,www) %dir %{nginx_home}
 %attr(-,www,www) %dir %{nginx_home_tmp}
 %attr(-,www,www) %dir %{nginx_logdir}
@@ -251,7 +261,7 @@ fi
 %files mod-http-perl
 %{nginx_datadir}/modules/mod-http-perl.conf
 %{nginx_modulesdir}/ngx_http_perl_module.so
-%dir %{perl_vendorarch}/auto/%{name}
+%dir %{perl_vendorarch}/auto/nginx
 %{perl_vendorarch}/nginx.pm
 %{perl_vendorarch}/auto/nginx/nginx.so
 
