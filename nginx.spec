@@ -13,7 +13,7 @@
 Summary:	Robust, small and high performance HTTP and reverse proxy server
 Name:		nginx
 Version:	1.25.1
-Release:	1
+Release:	2
 Group:		System/Servers
 # BSD License (two clause)
 # http://www.freebsd.org/copyright/freebsd-license.html
@@ -44,12 +44,11 @@ BuildRequires:	pkgconfig(zlib)
 BuildRequires:	systemd-macros
 # For _create_ssl_certificate macro
 BuildRequires:	rpm-helper
-Requires:	rpm-helper
+Requires(post):	rpm-helper
 Requires:	pcre
 Requires:	openssl
 Provides:	webserver
 Requires:	www-user
-Prereq:		www-user
 Requires(pre):	www-user
 %systemd_requires
 
@@ -155,11 +154,14 @@ find %{buildroot} -type f -exec chmod 0644 {} \;
 find %{buildroot} -type f -name '*.so' -exec chmod 0755 {} \;
 chmod 0755 %{buildroot}%{_sbindir}/nginx
 
-# Install our configs...
+# Get rid of broken upstream config samples
+rm -rf %{buildroot}%{nginx_confdir}/conf.d
+
+# And install our own configs...
 install -p -D -m 0644 %{S:51} %{buildroot}%{_unitdir}/nginx.service
 install -p -D -m 0644 %{S:52} %{buildroot}%{_sysconfdir}/logrotate.d/nginx
 install -p -d -m 0755 %{buildroot}%{nginx_confdir}/conf.d
-install -p -m 0644 %{S:53} %{buildroot}%{nginx_confdir}/conf.d
+install -p -m 0644 %{S:53} %{buildroot}%{nginx_confdir}/
 install -p -D -m 0644 %{S:54} %{buildroot}%{nginx_confdir}/
 install -p -D -m 0644 %{S:54} %{buildroot}%{nginx_confdir}/nginx.conf.default
 install -p -D -m 0644 %{S:55} %{buildroot}%{nginx_confdir}/
@@ -174,9 +176,6 @@ install -p -D -m 0644 %{S:56} %{buildroot}%{nginx_confdir}/sites-available/defau
 ln -s ../sites-available/default.conf %{buildroot}%{nginx_confdir}/sites-enabled/
 
 install -p -m 0644 %{S:100} %{S:101} %{S:102} %{S:103} %{S:104} %{buildroot}%{nginx_webroot}
-
-# And get rid of broken upstream config samples
-rm -rf %{buildroot}%{nginx_confdir}/conf.d
 
 # add current version
 sed -i -e "s|_VERSION_|%{version}|g" %{buildroot}%{nginx_webroot}/index.html
@@ -232,6 +231,7 @@ fi
 /srv/www/html/*.html
 /srv/www/html/*.png
 %dir %{nginx_confdir}
+%dir %{nginx_confdir}/conf.d
 %config(noreplace) %{nginx_confdir}/win-utf
 %config(noreplace) %{nginx_confdir}/nginx.conf.default
 %config(noreplace) %{nginx_confdir}/scgi_params
@@ -247,6 +247,7 @@ fi
 %config(noreplace) %{nginx_confdir}/mime.types
 %config(noreplace) %{nginx_confdir}/php.conf
 %config %{nginx_confdir}/php.conf.default
+%config(noreplace) %{nginx_confdir}/ssl.conf
 %dir %{nginx_confdir}/sites-available
 %config(noreplace) %{nginx_confdir}/sites-available/default.conf
 %dir %{nginx_confdir}/sites-enabled
