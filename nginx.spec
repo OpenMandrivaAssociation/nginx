@@ -13,7 +13,7 @@
 Summary:	Robust, small and high performance HTTP and reverse proxy server
 Name:		nginx
 Version:	1.25.3
-Release:	2
+Release:	3
 Group:		System/Servers
 # BSD License (two clause)
 # http://www.freebsd.org/copyright/freebsd-license.html
@@ -174,6 +174,7 @@ install -p -d -m 0755 %{buildroot}%{nginx_datadir}/modules
 mkdir -p %{buildroot}%{nginx_confdir}/sites-available %{buildroot}%{nginx_confdir}/sites-enabled
 install -p -D -m 0644 %{S:56} %{buildroot}%{nginx_confdir}/sites-available/default.conf
 ln -s ../sites-available/default.conf %{buildroot}%{nginx_confdir}/sites-enabled/
+mkdir -p %{buildroot}%{nginx_confdir}/http.conf.d
 
 install -p -m 0644 %{S:100} %{S:101} %{S:102} %{S:103} %{S:104} %{buildroot}%{nginx_webroot}
 
@@ -232,6 +233,7 @@ fi
 /srv/www/html/*.png
 %dir %{nginx_confdir}
 %dir %{nginx_confdir}/conf.d
+%dir %{nginx_confdir}/http.conf.d
 %config(noreplace) %{nginx_confdir}/win-utf
 %config(noreplace) %{nginx_confdir}/nginx.conf.default
 %config(noreplace) %{nginx_confdir}/scgi_params
