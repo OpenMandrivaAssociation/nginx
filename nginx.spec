@@ -12,7 +12,7 @@
 
 Summary:	Robust, small and high performance HTTP and reverse proxy server
 Name:		nginx
-Version:	1.27.1
+Version:	1.27.2
 Release:	1
 Group:		System/Servers
 # BSD License (two clause)
@@ -216,7 +216,7 @@ if [ $1 -eq 1 ]; then
 fi
 
 %files
-%doc LICENSE CHANGES README
+%doc LICENSE CHANGES
 %dir %{nginx_datadir}
 %dir %{nginx_datadir}/modules
 %dir %{nginx_modulesdir}
