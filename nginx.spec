@@ -18,7 +18,7 @@ Group:		System/Servers
 # BSD License (two clause)
 # http://www.freebsd.org/copyright/freebsd-license.html
 License:	BSD
-Url:		http://nginx.net/
+Url:		https://nginx.net/
 Source0:	http://nginx.org/download/%{name}-%{version}.tar.gz
 Source1:	https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/archive/refs/tags/v1.2.2-r1.tar.gz
 Source51:	nginx.service
