@@ -32,6 +32,11 @@ Source102:	nginx-logo.png
 Source103:	50x.html
 Source104:	404.html
 
+BuildRequires:	autoconf
+BuildRequires:	automake
+BuildRequires:	libtool-base
+BuildRequires:	slibtool
+BuildRequires:	make
 BuildRequires:	gd-devel
 BuildRequires:	GeoIP-devel
 BuildRequires:	perl-devel
