@@ -1,0 +1,41 @@
+diff -up ngx_brotli-master/filter/config.omv~ ngx_brotli-master/filter/config
+--- ngx_brotli-master/filter/config.omv~	2026-03-11 04:01:20.338886983 +0100
++++ ngx_brotli-master/filter/config	2026-03-11 04:04:18.540054908 +0100
+@@ -42,31 +42,15 @@ fi
+ ngx_module_type=HTTP_FILTER
+ ngx_module_name=ngx_http_brotli_filter_module
+ 
+-brotli="$ngx_addon_dir/deps/brotli/c"
+-if [ ! -f "$brotli/include/brotli/encode.h" ]; then
+-cat << END
++BROTLI_ENC_H="/usr/include/brotli/encode.h \
++              /usr/include/brotli/port.h \
++              /usr/include/brotli/types.h"
+ 
+-$0: error: \
+-Brotli library is missing from the $brotli directory.
+ 
+-Please make sure that the git submodule has been checked out:
+-
+-    cd $ngx_addon_dir && git submodule update --init && cd $PWD
+-
+-END
+-    exit 1
+-fi
+-
+-BROTLI_OUTPUT_DIRECTORY="$brotli/../out"
+-BROTLI_ENC_H="$brotli/include/brotli/encode.h \
+-              $brotli/include/brotli/port.h \
+-              $brotli/include/brotli/types.h"
+-
+-
+-ngx_module_incs="$brotli/include"
++ngx_module_incs="/usr/include"
+ ngx_module_deps="$BROTLI_ENC_H"
+ ngx_module_srcs="$BROTLI_MODULE_SRC_DIR/ngx_http_brotli_filter_module.c"
+-ngx_module_libs="-L$BROTLI_OUTPUT_DIRECTORY -lbrotlienc -lbrotlicommon -lm"
++ngx_module_libs="-lbrotlienc -lbrotlicommon -lm"
+ ngx_module_order="$ngx_module_name \
+                   ngx_pagespeed \
+                   ngx_http_postpone_filter_module \
+diff -up ngx_brotli-master/static/config.omv~ ngx_brotli-master/static/config

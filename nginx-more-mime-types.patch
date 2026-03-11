@@ -1,0 +1,35 @@
+diff -up nginx-1.29.6/conf/mime.types.omv~ nginx-1.29.6/conf/mime.types
+--- nginx-1.29.6/conf/mime.types.omv~	2026-03-11 04:25:54.908089062 +0100
++++ nginx-1.29.6/conf/mime.types	2026-03-11 05:06:12.186775299 +0100
+@@ -9,6 +9,13 @@ types {
+     application/atom+xml                             atom;
+     application/rss+xml                              rss;
+ 
++    text/x-c                                         c;
++    text/x-c++                                       cpp cxx;
++    text/x-chdr                                      h;
++    text/x-c++hdr                                    hpp hxx;
++    text/x-shellscript                               sh bash zsh;
++    text/x-python                                    py;
++
+     text/mathml                                      mml;
+     text/plain                                       txt;
+     text/vnd.sun.j2me.app-descriptor                 jad;
+@@ -25,6 +32,8 @@ types {
+     image/x-jng                                      jng;
+     image/x-ms-bmp                                   bmp;
+ 
++    font/ttf                                         ttf;
++    font/otf                                         otf;
+     font/woff                                        woff;
+     font/woff2                                       woff2;
+ 
+@@ -68,7 +77,7 @@ types {
+     application/x-tcl                                tcl tk;
+     application/x-x509-ca-cert                       der pem crt;
+     application/x-xpinstall                          xpi;
+-    application/xhtml+xml                            xhtml;
++    application/xhtml+xml                            xhtml xht;
+     application/xspf+xml                             xspf;
+     application/zip                                  zip;
+ 

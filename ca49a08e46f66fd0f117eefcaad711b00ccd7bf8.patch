@@ -1,0 +1,27 @@
+From ea614163737fff7964543a5fa757310dbc81b8c5 Mon Sep 17 00:00:00 2001
+From: Roger Hu <roger.hu@gmail.com>
+Date: Fri, 8 Dec 2023 12:20:57 -0800
+Subject: [PATCH] Remove unused variable
+
+---
+ ngx_rtmp_eval.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/ngx_rtmp_eval.c b/ngx_rtmp_eval.c
+index d4eeb9522..c2eddd6be 100644
+--- a/ngx_rtmp_eval.c
++++ b/ngx_rtmp_eval.c
+@@ -84,12 +84,11 @@ static void
+ ngx_rtmp_eval_append_var(void *ctx, ngx_buf_t *b, ngx_rtmp_eval_t **e,
+     ngx_str_t *name, ngx_log_t *log)
+ {
+-    ngx_uint_t          k;
+     ngx_str_t           v;
+     ngx_rtmp_eval_t    *ee;
+ 
+     for (; *e; ++e) {
+-        for (k = 0, ee = *e; ee->handler; ++k, ++ee) {
++        for (ee = *e; ee->handler; ++ee) {
+             if (ee->name.len == name->len &&
+                 ngx_memcmp(ee->name.data, name->data, name->len) == 0)
+             {

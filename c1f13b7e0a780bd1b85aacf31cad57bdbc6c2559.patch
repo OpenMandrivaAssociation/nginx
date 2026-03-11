@@ -1,0 +1,31 @@
+From ebe60b3c30057d4f6d11856200cb61f1ae2888dd Mon Sep 17 00:00:00 2001
+From: Laura Hausmann <laura@hausmann.dev>
+Date: Sat, 6 Jan 2024 00:20:31 +0100
+Subject: [PATCH] Correctly set media sequence number
+
+https://datatracker.ietf.org/doc/html/rfc8216#section-4.3.3.2 specifies the media sequence number to be the number of the *first* fragment in the list, not the last one.
+---
+ hls/ngx_rtmp_hls_module.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/hls/ngx_rtmp_hls_module.c b/hls/ngx_rtmp_hls_module.c
+index ac219f3d4..ce93ec7bf 100644
+--- a/hls/ngx_rtmp_hls_module.c
++++ b/hls/ngx_rtmp_hls_module.c
+@@ -73,7 +73,6 @@ typedef struct {
+     uint64_t                            key_id;
+     ngx_uint_t                          nfrags;
+     ngx_rtmp_hls_frag_t                *frags; /* circular 2 * winfrags + 1 */
+-    uint64_t                            mediaseq;
+ 
+     ngx_uint_t                          audio_cc;
+     ngx_uint_t                          video_cc;
+@@ -606,7 +605,7 @@ ngx_rtmp_hls_write_playlist(ngx_rtmp_session_t *s, int final)
+                      "#EXT-X-VERSION:3\n"
+                      "#EXT-X-MEDIA-SEQUENCE:%uL\n"
+                      "#EXT-X-TARGETDURATION:%ui\n",
+-                     ctx->mediaseq++, max_frag);
++                     ctx->frag + start_i, max_frag);
+ 
+     if (hacf->type == NGX_RTMP_HLS_TYPE_EVENT) {
+         p = ngx_slprintf(p, end, "#EXT-X-PLAYLIST-TYPE:EVENT\n");

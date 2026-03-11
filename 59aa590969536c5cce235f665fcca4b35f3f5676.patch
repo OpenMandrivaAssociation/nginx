@@ -1,0 +1,1448 @@
+From 6bd707044a5b3bfa486740d864c683652868d66c Mon Sep 17 00:00:00 2001
+From: Emmanuel Mathi-Amorim <manny@amorim.ca>
+Date: Sun, 8 May 2022 09:39:28 -0400
+Subject: [PATCH 1/3] Switch to sending rtmps as the protocol to rtmps relay
+ targets
+
+---
+ ngx_rtmp_relay_module.c | 20 ++++++++++++++++++--
+ ngx_rtmp_relay_module.h |  1 +
+ 2 files changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/ngx_rtmp_relay_module.c b/ngx_rtmp_relay_module.c
+index 8c05acf09..7ab6ac077 100644
+--- a/ngx_rtmp_relay_module.c
++++ b/ngx_rtmp_relay_module.c
+@@ -491,6 +491,20 @@ ngx_rtmp_relay_create_connection(ngx_rtmp_conf_ctx_t *cctx, ngx_str_t* name,
+         goto clear;
+     }
+ 
++#if (NGX_RTMP_SSL)
++
++    if (target->is_rtmps) {
++        ngx_str_set(&rctx->proto, "rtmps://");
++    } else {
++        ngx_str_set(&rctx->proto, "rtmp://");
++    }
++
++#else
++
++    ngx_str_set(&rctx->proto, "rtmp://");
++
++#endif 
++
+     rctx->tag = target->tag;
+     rctx->data = target->data;
+ 
+@@ -696,6 +710,8 @@ ngx_rtmp_relay_create_local_ctx(ngx_rtmp_session_t *s, ngx_str_t *name,
+         return NULL;
+     }
+ 
++    ngx_str_set(&ctx->proto, "rtmp://");
++
+     return ctx;
+ }
+ 
+@@ -1018,14 +1034,14 @@ ngx_rtmp_relay_send_connect(ngx_rtmp_session_t *s)
+         out_cmd[1].data = ctx->tc_url.data;
+         out_cmd[1].len  = ctx->tc_url.len;
+     } else {
+-        len = sizeof("rtmp://") - 1 + ctx->url.len +
++        len = ctx->proto.len + ctx->url.len +
+             sizeof("/") - 1 + ctx->app.len;
+         p = ngx_palloc(s->connection->pool, len);
+         if (p == NULL) {
+             return NGX_ERROR;
+         }
+         out_cmd[1].data = p;
+-        p = ngx_cpymem(p, "rtmp://", sizeof("rtmp://") - 1);
++        p = ngx_cpymem(p, ctx->proto.data, ctx->proto.len);
+ 
+         url_len = ctx->url.len;
+         url_end = ngx_strlchr(ctx->url.data, ctx->url.data + ctx->url.len, '/');
+diff --git a/ngx_rtmp_relay_module.h b/ngx_rtmp_relay_module.h
+index dc8adfe3c..8a10d419a 100644
+--- a/ngx_rtmp_relay_module.h
++++ b/ngx_rtmp_relay_module.h
+@@ -46,6 +46,7 @@ typedef struct ngx_rtmp_relay_ctx_s ngx_rtmp_relay_ctx_t;
+ 
+ struct ngx_rtmp_relay_ctx_s {
+     ngx_str_t                       name;
++    ngx_str_t                       proto;
+     ngx_str_t                       url;
+     ngx_log_t                       log;
+     ngx_rtmp_session_t             *session;
+
+From 0bd662e80a52fc50efbe13c757664fca276aec4b Mon Sep 17 00:00:00 2001
+From: Emmanuel Mathi-Amorim <manny@amorim.ca>
+Date: Sun, 11 Sep 2022 13:19:06 -0400
+Subject: [PATCH 2/3] Add support for incoming SSL connections
+
+---
+ config                 |   3 +
+ ngx_rtmp.c             |   7 +
+ ngx_rtmp.h             |   4 +
+ ngx_rtmp_core_module.c |  18 +
+ ngx_rtmp_init.c        |  13 +-
+ ngx_rtmp_ssl_module.c  | 874 +++++++++++++++++++++++++++++++++++++++++
+ ngx_rtmp_ssl_module.h  |  65 +++
+ 7 files changed, 982 insertions(+), 2 deletions(-)
+ create mode 100644 ngx_rtmp_ssl_module.c
+ create mode 100644 ngx_rtmp_ssl_module.h
+
+diff --git a/config b/config
+index 13f00e83c..68542e5a6 100644
+--- a/config
++++ b/config
+@@ -20,6 +20,7 @@ RTMP_CORE_MODULES="                                         \
+                 ngx_rtmp_limit_module                       \
+                 ngx_rtmp_hls_module                         \
+                 ngx_rtmp_dash_module                        \
++                ngx_rtmp_ssl_module                         \
+                 "
+ RTMP_HTTP_MODULES="                                         \
+                 ngx_rtmp_stat_module                        \
+@@ -41,6 +42,7 @@ RTMP_DEPS="                                                 \
+                 $ngx_addon_dir/ngx_rtmp_streams.h           \
+                 $ngx_addon_dir/ngx_rtmp_bitop.h             \
+                 $ngx_addon_dir/ngx_rtmp_proxy_protocol.h    \
++                $ngx_addon_dir/ngx_rtmp_ssl_module.h        \
+                 $ngx_addon_dir/hls/ngx_rtmp_mpegts.h        \
+                 $ngx_addon_dir/dash/ngx_rtmp_mp4.h          \
+                 "
+@@ -73,6 +75,7 @@ RTMP_CORE_SRCS="                                            \
+                 $ngx_addon_dir/ngx_rtmp_limit_module.c      \
+                 $ngx_addon_dir/ngx_rtmp_bitop.c             \
+                 $ngx_addon_dir/ngx_rtmp_proxy_protocol.c    \
++                $ngx_addon_dir/ngx_rtmp_ssl_module.c        \
+                 $ngx_addon_dir/hls/ngx_rtmp_hls_module.c    \
+                 $ngx_addon_dir/dash/ngx_rtmp_dash_module.c  \
+                 $ngx_addon_dir/hls/ngx_rtmp_mpegts.c        \
+diff --git a/ngx_rtmp.c b/ngx_rtmp.c
+index ad671d475..d1c4d989d 100644
+--- a/ngx_rtmp.c
++++ b/ngx_rtmp.c
+@@ -555,6 +555,7 @@ ngx_rtmp_add_ports(ngx_conf_t *cf, ngx_array_t *ports,
+     addr->ctx = listen->ctx;
+     addr->bind = listen->bind;
+     addr->wildcard = listen->wildcard;
++    addr->ssl = listen->ssl;
+     addr->so_keepalive = listen->so_keepalive;
+     addr->proxy_protocol = listen->proxy_protocol;
+ #if (NGX_HAVE_KEEPALIVE_TUNABLE)
+@@ -716,6 +717,9 @@ ngx_rtmp_add_addrs(ngx_conf_t *cf, ngx_rtmp_port_t *mport,
+         addrs[i].conf.addr_text.len = len;
+         addrs[i].conf.addr_text.data = p;
+         addrs[i].conf.proxy_protocol = addr->proxy_protocol;
++#if (NGX_RTMP_SSL)
++        addrs[i].conf.ssl = addr[i].ssl;
++#endif
+     }
+ 
+     return NGX_OK;
+@@ -766,6 +770,9 @@ ngx_rtmp_add_addrs6(ngx_conf_t *cf, ngx_rtmp_port_t *mport,
+         addrs6[i].conf.addr_text.len = len;
+         addrs6[i].conf.addr_text.data = p;
+         addrs6[i].conf.proxy_protocol = addr->proxy_protocol;
++#if (NGX_RTMP_SSL)
++        addrs6[i].conf.ssl = addr[i].ssl;
++#endif
+     }
+ 
+     return NGX_OK;
+diff --git a/ngx_rtmp.h b/ngx_rtmp.h
+index e38f6e942..5c536b102 100644
+--- a/ngx_rtmp.h
++++ b/ngx_rtmp.h
+@@ -40,6 +40,7 @@ typedef struct {
+ 
+     unsigned                bind:1;
+     unsigned                wildcard:1;
++    unsigned                ssl:1;
+ #if (NGX_HAVE_INET6 && defined IPV6_V6ONLY)
+     unsigned                ipv6only:2;
+ #endif
+@@ -56,6 +57,7 @@ typedef struct {
+ typedef struct {
+     ngx_rtmp_conf_ctx_t    *ctx;
+     ngx_str_t               addr_text;
++    unsigned                ssl:1;
+     unsigned                proxy_protocol:1;
+ } ngx_rtmp_addr_conf_t;
+ 
+@@ -96,6 +98,7 @@ typedef struct {
+ 
+     unsigned                bind:1;
+     unsigned                wildcard:1;
++    unsigned                ssl:1;
+ #if (NGX_HAVE_INET6 && defined IPV6_V6ONLY)
+     unsigned                ipv6only:2;
+ #endif
+@@ -258,6 +261,7 @@ typedef struct {
+     ngx_int_t               in_chunk_size_changing;
+ 
+     ngx_connection_t       *connection;
++    unsigned                ssl:1;
+ 
+     /* circular buffer of RTMP message pointers */
+     ngx_msec_t              timeout;
+diff --git a/ngx_rtmp_core_module.c b/ngx_rtmp_core_module.c
+index 4f03cef64..40dd3e56b 100644
+--- a/ngx_rtmp_core_module.c
++++ b/ngx_rtmp_core_module.c
+@@ -10,6 +10,9 @@
+ #include <nginx.h>
+ #include "ngx_rtmp.h"
+ 
++#if (NGX_RTMP_SSL)
++#include "ngx_rtmp_ssl_module.h"
++#endif
+ 
+ static void *ngx_rtmp_core_create_main_conf(ngx_conf_t *cf);
+ static void *ngx_rtmp_core_create_srv_conf(ngx_conf_t *cf);
+@@ -677,6 +680,21 @@ ngx_rtmp_core_listen(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+ #endif
+         }
+ 
++        if (ngx_strcmp(value[i].data, "ssl") == 0) {
++#if (NGX_RTMP_SSL)
++            ngx_rtmp_ssl_conf_t    *sslcf;
++
++            sslcf = ngx_rtmp_conf_get_module_srv_conf(cf, ngx_rtmp_ssl_module);
++            sslcf->listen = 1;
++            ls->ssl = 1;
++            continue;
++#else
++            ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
++                               "the \"ssl\" parameter requires ssl support");
++            return NGX_CONF_ERROR;
++#endif
++        }
++
+         if (ngx_strncmp(value[i].data, "so_keepalive=", 13) == 0) {
+ 
+             if (ngx_strcmp(&value[i].data[13], "on") == 0) {
+diff --git a/ngx_rtmp_init.c b/ngx_rtmp_init.c
+index 59e89ae2c..1d615e36b 100644
+--- a/ngx_rtmp_init.c
++++ b/ngx_rtmp_init.c
+@@ -8,6 +8,7 @@
+ #include <ngx_core.h>
+ #include "ngx_rtmp.h"
+ #include "ngx_rtmp_proxy_protocol.h"
++#include "ngx_rtmp_ssl_module.h"
+ 
+ 
+ static void ngx_rtmp_close_connection(ngx_connection_t *c);
+@@ -136,7 +137,12 @@ ngx_rtmp_init_connection(ngx_connection_t *c)
+         ngx_rtmp_proxy_protocol(s);
+ 
+     } else {
+-        ngx_rtmp_handshake(s);
++#if (NGX_RTMP_SSL)
++        if (s->ssl)
++            ngx_rtmp_ssl(s);
++        else
++#endif
++            ngx_rtmp_handshake(s);
+     }
+ }
+ 
+@@ -160,6 +166,10 @@ ngx_rtmp_init_session(ngx_connection_t *c, ngx_rtmp_addr_conf_t *addr_conf)
+     s->main_conf = addr_conf->ctx->main_conf;
+     s->srv_conf = addr_conf->ctx->srv_conf;
+ 
++#if (NGX_RTMP_SSL)
++    s->ssl = addr_conf->ssl;
++#endif
++
+     s->addr_text = &addr_conf->addr_text;
+ 
+     c->data = s;
+@@ -336,4 +346,3 @@ ngx_rtmp_finalize_session(ngx_rtmp_session_t *s)
+ 
+     ngx_post_event(e, &ngx_posted_events);
+ }
+-
+diff --git a/ngx_rtmp_ssl_module.c b/ngx_rtmp_ssl_module.c
+new file mode 100644
+index 000000000..9ae0d56de
+--- /dev/null
++++ b/ngx_rtmp_ssl_module.c
+@@ -0,0 +1,874 @@
++
++/*
++ * Copyright (C) Igor Sysoev
++ * Copyright (C) Nginx, Inc.
++ */
++
++
++#include <ngx_config.h>
++#include <ngx_core.h>
++#include "ngx_rtmp_ssl_module.h"
++
++
++#define NGX_DEFAULT_CIPHERS     "HIGH:!aNULL:!MD5"
++#define NGX_DEFAULT_ECDH_CURVE  "auto"
++
++
++static ngx_int_t ngx_rtmp_ssl_handler(ngx_rtmp_session_t *s);
++static ngx_int_t ngx_rtmp_ssl_init_connection(ngx_ssl_t *ssl,
++    ngx_connection_t *c);
++static void ngx_rtmp_ssl_handshake_handler(ngx_connection_t *c);
++#ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
++static int ngx_rtmp_ssl_servername(ngx_ssl_conn_t *ssl_conn, int *ad,
++    void *arg);
++#endif
++#ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
++static int ngx_rtmp_ssl_alpn_select(ngx_ssl_conn_t *ssl_conn,
++    const unsigned char **out, unsigned char *outlen,
++    const unsigned char *in, unsigned int inlen, void *arg);
++#endif
++static void *ngx_rtmp_ssl_create_conf(ngx_conf_t *cf);
++static char *ngx_rtmp_ssl_merge_conf(ngx_conf_t *cf, void *parent,
++    void *child);
++
++static char *ngx_rtmp_ssl_password_file(ngx_conf_t *cf, ngx_command_t *cmd,
++    void *conf);
++static char *ngx_rtmp_ssl_session_cache(ngx_conf_t *cf, ngx_command_t *cmd,
++    void *conf);
++static char *ngx_rtmp_ssl_alpn(ngx_conf_t *cf, ngx_command_t *cmd,
++    void *conf);
++
++static char *ngx_rtmp_ssl_conf_command_check(ngx_conf_t *cf, void *post,
++    void *data);
++
++
++static ngx_conf_bitmask_t  ngx_rtmp_ssl_protocols[] = {
++    { ngx_string("SSLv2"), NGX_SSL_SSLv2 },
++    { ngx_string("SSLv3"), NGX_SSL_SSLv3 },
++    { ngx_string("TLSv1"), NGX_SSL_TLSv1 },
++    { ngx_string("TLSv1.1"), NGX_SSL_TLSv1_1 },
++    { ngx_string("TLSv1.2"), NGX_SSL_TLSv1_2 },
++    { ngx_string("TLSv1.3"), NGX_SSL_TLSv1_3 },
++    { ngx_null_string, 0 }
++};
++
++
++static ngx_conf_enum_t  ngx_rtmp_ssl_verify[] = {
++    { ngx_string("off"), 0 },
++    { ngx_string("on"), 1 },
++    { ngx_string("optional"), 2 },
++    { ngx_string("optional_no_ca"), 3 },
++    { ngx_null_string, 0 }
++};
++
++
++static ngx_conf_post_t  ngx_rtmp_ssl_conf_command_post =
++    { ngx_rtmp_ssl_conf_command_check };
++
++
++static ngx_command_t  ngx_rtmp_ssl_commands[] = {
++
++    { ngx_string("ssl_handshake_timeout"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_msec_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, handshake_timeout),
++      NULL },
++
++    { ngx_string("ssl_certificate"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_str_array_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, certificates),
++      NULL },
++
++    { ngx_string("ssl_certificate_key"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_str_array_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, certificate_keys),
++      NULL },
++
++    { ngx_string("ssl_password_file"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE1,
++      ngx_rtmp_ssl_password_file,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      0,
++      NULL },
++
++    { ngx_string("ssl_dhparam"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_str_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, dhparam),
++      NULL },
++
++    { ngx_string("ssl_ecdh_curve"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_str_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, ecdh_curve),
++      NULL },
++
++    { ngx_string("ssl_protocols"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_1MORE,
++      ngx_conf_set_bitmask_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, protocols),
++      &ngx_rtmp_ssl_protocols },
++
++    { ngx_string("ssl_ciphers"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_str_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, ciphers),
++      NULL },
++
++    { ngx_string("ssl_verify_client"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_enum_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, verify),
++      &ngx_rtmp_ssl_verify },
++
++    { ngx_string("ssl_verify_depth"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_num_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, verify_depth),
++      NULL },
++
++    { ngx_string("ssl_client_certificate"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_str_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, client_certificate),
++      NULL },
++
++    { ngx_string("ssl_trusted_certificate"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_str_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, trusted_certificate),
++      NULL },
++
++    { ngx_string("ssl_prefer_server_ciphers"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_FLAG,
++      ngx_conf_set_flag_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, prefer_server_ciphers),
++      NULL },
++
++    { ngx_string("ssl_session_cache"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE12,
++      ngx_rtmp_ssl_session_cache,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      0,
++      NULL },
++
++    { ngx_string("ssl_session_tickets"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_FLAG,
++      ngx_conf_set_flag_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, session_tickets),
++      NULL },
++
++    { ngx_string("ssl_session_ticket_key"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_str_array_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, session_ticket_keys),
++      NULL },
++
++    { ngx_string("ssl_session_timeout"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_sec_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, session_timeout),
++      NULL },
++
++    { ngx_string("ssl_crl"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_str_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, crl),
++      NULL },
++
++    { ngx_string("ssl_conf_command"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_TAKE2,
++      ngx_conf_set_keyval_slot,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      offsetof(ngx_rtmp_ssl_conf_t, conf_commands),
++      &ngx_rtmp_ssl_conf_command_post },
++
++    { ngx_string("ssl_alpn"),
++      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_CONF_1MORE,
++      ngx_rtmp_ssl_alpn,
++      NGX_RTMP_SRV_CONF_OFFSET,
++      0,
++      NULL },
++
++      ngx_null_command
++};
++
++
++static ngx_rtmp_module_t  ngx_rtmp_ssl_module_ctx = {
++    NULL,                                /* preconfiguration */
++    NULL,                                /* postconfiguration */
++    NULL,                                /* create main configuration */
++    NULL,                                /* init main configuration */
++    ngx_rtmp_ssl_create_conf,            /* create server configuration */
++    ngx_rtmp_ssl_merge_conf,             /* merge server configuration */
++    NULL,                                /* create app configuration */
++    NULL                                 /* merge app configuration */
++};
++
++
++ngx_module_t  ngx_rtmp_ssl_module = {
++    NGX_MODULE_V1,
++    &ngx_rtmp_ssl_module_ctx,            /* module context */
++    ngx_rtmp_ssl_commands,               /* module directives */
++    NGX_RTMP_MODULE,                     /* module type */
++    NULL,                                /* init master */
++    NULL,                                /* init module */
++    NULL,                                /* init process */
++    NULL,                                /* init thread */
++    NULL,                                /* exit thread */
++    NULL,                                /* exit process */
++    NULL,                                /* exit master */
++    NGX_MODULE_V1_PADDING
++};
++
++
++static ngx_str_t ngx_rtmp_ssl_sess_id_ctx = ngx_string("RTMP");
++
++
++void
++ngx_rtmp_ssl(ngx_rtmp_session_t *s)
++{
++    ngx_int_t               rv;
++
++    rv = ngx_rtmp_ssl_handler(s);
++
++    if (rv == NGX_ERROR) {
++        ngx_rtmp_finalize_session(s);
++        return;
++    }
++
++    if (rv == NGX_OK) {
++        /* we have completed the SSL setup so move on to the next phase */
++        s->connection->log->action = NULL;
++        ngx_rtmp_handshake(s);
++        return;
++    }
++}
++
++
++ngx_int_t
++ngx_rtmp_ssl_handler(ngx_rtmp_session_t *s)
++{
++    long                    rc;
++    X509                   *cert;
++    ngx_int_t               rv;
++    ngx_connection_t       *c;
++    ngx_rtmp_ssl_conf_t    *sslcf;
++
++    if (!s->ssl) {
++        return NGX_OK;
++    }
++
++    c = s->connection;
++
++    sslcf = ngx_rtmp_get_module_srv_conf(s, ngx_rtmp_ssl_module);
++
++    if (c->ssl == NULL) {
++        c->log->action = "SSL handshaking";
++
++        rv = ngx_rtmp_ssl_init_connection(&sslcf->ssl, c);
++
++        if (rv != NGX_OK) {
++            return rv;
++        }
++    }
++
++    if (sslcf->verify) {
++        rc = SSL_get_verify_result(c->ssl->connection);
++
++        if (rc != X509_V_OK
++            && (sslcf->verify != 3 || !ngx_ssl_verify_error_optional(rc)))
++        {
++            ngx_log_error(NGX_LOG_INFO, c->log, 0,
++                          "client SSL certificate verify error: (%l:%s)",
++                          rc, X509_verify_cert_error_string(rc));
++
++            ngx_ssl_remove_cached_session(c->ssl->session_ctx,
++                                       (SSL_get0_session(c->ssl->connection)));
++            return NGX_ERROR;
++        }
++
++        if (sslcf->verify == 1) {
++            cert = SSL_get_peer_certificate(c->ssl->connection);
++
++            if (cert == NULL) {
++                ngx_log_error(NGX_LOG_INFO, c->log, 0,
++                              "client sent no required SSL certificate");
++
++                ngx_ssl_remove_cached_session(c->ssl->session_ctx,
++                                       (SSL_get0_session(c->ssl->connection)));
++                return NGX_ERROR;
++            }
++
++            X509_free(cert);
++        }
++    }
++
++    return NGX_OK;
++}
++
++
++static ngx_int_t
++ngx_rtmp_ssl_init_connection(ngx_ssl_t *ssl, ngx_connection_t *c)
++{
++    ngx_int_t                  rc;
++    ngx_rtmp_session_t        *s;
++    ngx_rtmp_ssl_conf_t       *sslcf;
++
++    s = c->data;
++
++    if (ngx_ssl_create_connection(ssl, c, 0) != NGX_OK) {
++        return NGX_ERROR;
++    }
++
++    rc = ngx_ssl_handshake(c);
++
++    if (rc == NGX_ERROR) {
++        return NGX_ERROR;
++    }
++
++    if (rc == NGX_AGAIN) {
++        sslcf = ngx_rtmp_get_module_srv_conf(s, ngx_rtmp_ssl_module);
++
++        ngx_add_timer(c->read, sslcf->handshake_timeout);
++
++        c->ssl->handler = ngx_rtmp_ssl_handshake_handler;
++
++        return NGX_AGAIN;
++    }
++
++    /* rc == NGX_OK */
++
++    return NGX_OK;
++}
++
++
++static void
++ngx_rtmp_ssl_handshake_handler(ngx_connection_t *c)
++{
++    ngx_rtmp_session_t  *s;
++
++    s = c->data;
++
++    if (!c->ssl->handshaked) {
++        ngx_rtmp_finalize_session(s);
++        return;
++    }
++
++    if (c->read->timer_set) {
++        ngx_del_timer(c->read);
++    }
++
++    ngx_rtmp_ssl(s);
++}
++
++
++#ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
++
++static int
++ngx_rtmp_ssl_servername(ngx_ssl_conn_t *ssl_conn, int *ad, void *arg)
++{
++    return SSL_TLSEXT_ERR_OK;
++}
++
++#endif
++
++
++#ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
++
++static int
++ngx_rtmp_ssl_alpn_select(ngx_ssl_conn_t *ssl_conn, const unsigned char **out,
++    unsigned char *outlen, const unsigned char *in, unsigned int inlen,
++    void *arg)
++{
++    ngx_str_t         *alpn;
++#if (NGX_DEBUG)
++    unsigned int       i;
++    ngx_connection_t  *c;
++
++    c = ngx_ssl_get_connection(ssl_conn);
++
++    for (i = 0; i < inlen; i += in[i] + 1) {
++        ngx_log_debug2(NGX_LOG_DEBUG_RTMP, c->log, 0,
++                       "SSL ALPN supported by client: %*s",
++                       (size_t) in[i], &in[i + 1]);
++    }
++
++#endif
++
++    alpn = arg;
++
++    if (SSL_select_next_proto((unsigned char **) out, outlen, alpn->data,
++                              alpn->len, in, inlen)
++        != OPENSSL_NPN_NEGOTIATED)
++    {
++        return SSL_TLSEXT_ERR_ALERT_FATAL;
++    }
++
++    ngx_log_debug2(NGX_LOG_DEBUG_RTMP, c->log, 0,
++                   "SSL ALPN selected: %*s", (size_t) *outlen, *out);
++
++    return SSL_TLSEXT_ERR_OK;
++}
++
++#endif
++
++
++static void *
++ngx_rtmp_ssl_create_conf(ngx_conf_t *cf)
++{
++    ngx_rtmp_ssl_conf_t  *scf;
++
++    scf = ngx_pcalloc(cf->pool, sizeof(ngx_rtmp_ssl_conf_t));
++    if (scf == NULL) {
++        return NULL;
++    }
++
++    /*
++     * set by ngx_pcalloc():
++     *
++     *     scf->listen = 0;
++     *     scf->protocols = 0;
++     *     scf->certificate_values = NULL;
++     *     scf->dhparam = { 0, NULL };
++     *     scf->ecdh_curve = { 0, NULL };
++     *     scf->client_certificate = { 0, NULL };
++     *     scf->trusted_certificate = { 0, NULL };
++     *     scf->crl = { 0, NULL };
++     *     scf->alpn = { 0, NULL };
++     *     scf->ciphers = { 0, NULL };
++     *     scf->shm_zone = NULL;
++     */
++
++    scf->handshake_timeout = NGX_CONF_UNSET_MSEC;
++    scf->certificates = NGX_CONF_UNSET_PTR;
++    scf->certificate_keys = NGX_CONF_UNSET_PTR;
++    scf->passwords = NGX_CONF_UNSET_PTR;
++    scf->conf_commands = NGX_CONF_UNSET_PTR;
++    scf->prefer_server_ciphers = NGX_CONF_UNSET;
++    scf->verify = NGX_CONF_UNSET_UINT;
++    scf->verify_depth = NGX_CONF_UNSET_UINT;
++    scf->builtin_session_cache = NGX_CONF_UNSET;
++    scf->session_timeout = NGX_CONF_UNSET;
++    scf->session_tickets = NGX_CONF_UNSET;
++    scf->session_ticket_keys = NGX_CONF_UNSET_PTR;
++
++    return scf;
++}
++
++
++static char *
++ngx_rtmp_ssl_merge_conf(ngx_conf_t *cf, void *parent, void *child)
++{
++    ngx_rtmp_ssl_conf_t *prev = parent;
++    ngx_rtmp_ssl_conf_t *conf = child;
++
++    ngx_pool_cleanup_t  *cln;
++
++    ngx_conf_merge_msec_value(conf->handshake_timeout,
++                         prev->handshake_timeout, 60000);
++
++    ngx_conf_merge_value(conf->session_timeout,
++                         prev->session_timeout, 300);
++
++    ngx_conf_merge_value(conf->prefer_server_ciphers,
++                         prev->prefer_server_ciphers, 0);
++
++    ngx_conf_merge_bitmask_value(conf->protocols, prev->protocols,
++                         (NGX_CONF_BITMASK_SET|NGX_SSL_TLSv1
++                          |NGX_SSL_TLSv1_1|NGX_SSL_TLSv1_2));
++
++    ngx_conf_merge_uint_value(conf->verify, prev->verify, 0);
++    ngx_conf_merge_uint_value(conf->verify_depth, prev->verify_depth, 1);
++
++    ngx_conf_merge_ptr_value(conf->certificates, prev->certificates, NULL);
++    ngx_conf_merge_ptr_value(conf->certificate_keys, prev->certificate_keys,
++                         NULL);
++
++    ngx_conf_merge_ptr_value(conf->passwords, prev->passwords, NULL);
++
++    ngx_conf_merge_str_value(conf->dhparam, prev->dhparam, "");
++
++    ngx_conf_merge_str_value(conf->client_certificate, prev->client_certificate,
++                         "");
++    ngx_conf_merge_str_value(conf->trusted_certificate,
++                         prev->trusted_certificate, "");
++    ngx_conf_merge_str_value(conf->crl, prev->crl, "");
++    ngx_conf_merge_str_value(conf->alpn, prev->alpn, "");
++
++    ngx_conf_merge_str_value(conf->ecdh_curve, prev->ecdh_curve,
++                         NGX_DEFAULT_ECDH_CURVE);
++
++    ngx_conf_merge_str_value(conf->ciphers, prev->ciphers, NGX_DEFAULT_CIPHERS);
++
++    ngx_conf_merge_ptr_value(conf->conf_commands, prev->conf_commands, NULL);
++
++
++    conf->ssl.log = cf->log;
++
++    if (!conf->listen) {
++        return NGX_CONF_OK;
++    }
++
++    if (conf->certificates == NULL) {
++        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
++                      "no \"ssl_certificate\" is defined for "
++                      "the \"listen ... ssl\" directive in %s:%ui",
++                      conf->file, conf->line);
++        return NGX_CONF_ERROR;
++    }
++
++    if (conf->certificate_keys == NULL) {
++        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
++                      "no \"ssl_certificate_key\" is defined for "
++                      "the \"listen ... ssl\" directive in %s:%ui",
++                      conf->file, conf->line);
++        return NGX_CONF_ERROR;
++    }
++
++    if (conf->certificate_keys->nelts < conf->certificates->nelts) {
++        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
++                      "no \"ssl_certificate_key\" is defined "
++                      "for certificate \"%V\" and "
++                      "the \"listen ... ssl\" directive in %s:%ui",
++                      ((ngx_str_t *) conf->certificates->elts)
++                      + conf->certificates->nelts - 1,
++                      conf->file, conf->line);
++        return NGX_CONF_ERROR;
++    }
++
++    if (ngx_ssl_create(&conf->ssl, conf->protocols, NULL) != NGX_OK) {
++        return NGX_CONF_ERROR;
++    }
++
++    cln = ngx_pool_cleanup_add(cf->pool, 0);
++    if (cln == NULL) {
++        ngx_ssl_cleanup_ctx(&conf->ssl);
++        return NGX_CONF_ERROR;
++    }
++
++    cln->handler = ngx_ssl_cleanup_ctx;
++    cln->data = &conf->ssl;
++
++#ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
++    SSL_CTX_set_tlsext_servername_callback(conf->ssl.ctx,
++                                           ngx_rtmp_ssl_servername);
++#endif
++
++#ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
++    if (conf->alpn.len) {
++        SSL_CTX_set_alpn_select_cb(conf->ssl.ctx, ngx_rtmp_ssl_alpn_select,
++                                   &conf->alpn);
++    }
++#endif
++
++    if (ngx_ssl_ciphers(cf, &conf->ssl, &conf->ciphers,
++                        conf->prefer_server_ciphers)
++        != NGX_OK)
++    {
++        return NGX_CONF_ERROR;
++    }
++
++    /* configure certificates */
++
++    if (ngx_ssl_certificates(cf, &conf->ssl, conf->certificates,
++                                conf->certificate_keys, conf->passwords)
++        != NGX_OK)
++    {
++        return NGX_CONF_ERROR;
++    }
++
++    if (conf->verify) {
++
++        if (conf->client_certificate.len == 0 && conf->verify != 3) {
++            ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
++                          "no ssl_client_certificate for ssl_verify_client");
++            return NGX_CONF_ERROR;
++        }
++
++        if (ngx_ssl_client_certificate(cf, &conf->ssl,
++                                       &conf->client_certificate,
++                                       conf->verify_depth)
++            != NGX_OK)
++        {
++            return NGX_CONF_ERROR;
++        }
++
++        if (ngx_ssl_trusted_certificate(cf, &conf->ssl,
++                                        &conf->trusted_certificate,
++                                        conf->verify_depth)
++            != NGX_OK)
++        {
++            return NGX_CONF_ERROR;
++        }
++
++        if (ngx_ssl_crl(cf, &conf->ssl, &conf->crl) != NGX_OK) {
++            return NGX_CONF_ERROR;
++        }
++    }
++
++    if (ngx_ssl_dhparam(cf, &conf->ssl, &conf->dhparam) != NGX_OK) {
++        return NGX_CONF_ERROR;
++    }
++
++    if (ngx_ssl_ecdh_curve(cf, &conf->ssl, &conf->ecdh_curve) != NGX_OK) {
++        return NGX_CONF_ERROR;
++    }
++
++    ngx_conf_merge_value(conf->builtin_session_cache,
++                         prev->builtin_session_cache, NGX_SSL_NONE_SCACHE);
++
++    if (conf->shm_zone == NULL) {
++        conf->shm_zone = prev->shm_zone;
++    }
++
++    if (ngx_ssl_session_cache(&conf->ssl, &ngx_rtmp_ssl_sess_id_ctx,
++                              conf->certificates, conf->builtin_session_cache,
++                              conf->shm_zone, conf->session_timeout)
++        != NGX_OK)
++    {
++        return NGX_CONF_ERROR;
++    }
++
++    ngx_conf_merge_value(conf->session_tickets,
++                         prev->session_tickets, 1);
++
++#ifdef SSL_OP_NO_TICKET
++    if (!conf->session_tickets) {
++        SSL_CTX_set_options(conf->ssl.ctx, SSL_OP_NO_TICKET);
++    }
++#endif
++
++    ngx_conf_merge_ptr_value(conf->session_ticket_keys,
++                         prev->session_ticket_keys, NULL);
++
++    if (ngx_ssl_session_ticket_keys(cf, &conf->ssl, conf->session_ticket_keys)
++        != NGX_OK)
++    {
++        return NGX_CONF_ERROR;
++    }
++
++    if (ngx_ssl_conf_commands(cf, &conf->ssl, conf->conf_commands) != NGX_OK) {
++        return NGX_CONF_ERROR;
++    }
++
++    return NGX_CONF_OK;
++}
++
++
++static char *
++ngx_rtmp_ssl_password_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
++{
++    ngx_rtmp_ssl_conf_t  *scf = conf;
++
++    ngx_str_t  *value;
++
++    if (scf->passwords != NGX_CONF_UNSET_PTR) {
++        return "is duplicate";
++    }
++
++    value = cf->args->elts;
++
++    scf->passwords = ngx_ssl_read_password_file(cf, &value[1]);
++
++    if (scf->passwords == NULL) {
++        return NGX_CONF_ERROR;
++    }
++
++    return NGX_CONF_OK;
++}
++
++
++static char *
++ngx_rtmp_ssl_session_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
++{
++    ngx_rtmp_ssl_conf_t  *scf = conf;
++
++    size_t       len;
++    ngx_str_t   *value, name, size;
++    ngx_int_t    n;
++    ngx_uint_t   i, j;
++
++    value = cf->args->elts;
++
++    for (i = 1; i < cf->args->nelts; i++) {
++
++        if (ngx_strcmp(value[i].data, "off") == 0) {
++            scf->builtin_session_cache = NGX_SSL_NO_SCACHE;
++            continue;
++        }
++
++        if (ngx_strcmp(value[i].data, "none") == 0) {
++            scf->builtin_session_cache = NGX_SSL_NONE_SCACHE;
++            continue;
++        }
++
++        if (ngx_strcmp(value[i].data, "builtin") == 0) {
++            scf->builtin_session_cache = NGX_SSL_DFLT_BUILTIN_SCACHE;
++            continue;
++        }
++
++        if (value[i].len > sizeof("builtin:") - 1
++            && ngx_strncmp(value[i].data, "builtin:", sizeof("builtin:") - 1)
++               == 0)
++        {
++            n = ngx_atoi(value[i].data + sizeof("builtin:") - 1,
++                         value[i].len - (sizeof("builtin:") - 1));
++
++            if (n == NGX_ERROR) {
++                goto invalid;
++            }
++
++            scf->builtin_session_cache = n;
++
++            continue;
++        }
++
++        if (value[i].len > sizeof("shared:") - 1
++            && ngx_strncmp(value[i].data, "shared:", sizeof("shared:") - 1)
++               == 0)
++        {
++            len = 0;
++
++            for (j = sizeof("shared:") - 1; j < value[i].len; j++) {
++                if (value[i].data[j] == ':') {
++                    break;
++                }
++
++                len++;
++            }
++
++            if (len == 0) {
++                goto invalid;
++            }
++
++            name.len = len;
++            name.data = value[i].data + sizeof("shared:") - 1;
++
++            size.len = value[i].len - j - 1;
++            size.data = name.data + len + 1;
++
++            n = ngx_parse_size(&size);
++
++            if (n == NGX_ERROR) {
++                goto invalid;
++            }
++
++            if (n < (ngx_int_t) (8 * ngx_pagesize)) {
++                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
++                                   "session cache \"%V\" is too small",
++                                   &value[i]);
++
++                return NGX_CONF_ERROR;
++            }
++
++            scf->shm_zone = ngx_shared_memory_add(cf, &name, n,
++                                                   &ngx_rtmp_ssl_module);
++            if (scf->shm_zone == NULL) {
++                return NGX_CONF_ERROR;
++            }
++
++            scf->shm_zone->init = ngx_ssl_session_cache_init;
++
++            continue;
++        }
++
++        goto invalid;
++    }
++
++    if (scf->shm_zone && scf->builtin_session_cache == NGX_CONF_UNSET) {
++        scf->builtin_session_cache = NGX_SSL_NO_BUILTIN_SCACHE;
++    }
++
++    return NGX_CONF_OK;
++
++invalid:
++
++    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
++                       "invalid session cache \"%V\"", &value[i]);
++
++    return NGX_CONF_ERROR;
++}
++
++
++static char *
++ngx_rtmp_ssl_alpn(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
++{
++#ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
++
++    ngx_rtmp_ssl_conf_t  *scf = conf;
++
++    u_char      *p;
++    size_t       len;
++    ngx_str_t   *value;
++    ngx_uint_t   i;
++
++    if (scf->alpn.len) {
++        return "is duplicate";
++    }
++
++    value = cf->args->elts;
++
++    len = 0;
++
++    for (i = 1; i < cf->args->nelts; i++) {
++
++        if (value[i].len > 255) {
++            return "protocol too long";
++        }
++
++        len += value[i].len + 1;
++    }
++
++    scf->alpn.data = ngx_pnalloc(cf->pool, len);
++    if (scf->alpn.data == NULL) {
++        return NGX_CONF_ERROR;
++    }
++
++    p = scf->alpn.data;
++
++    for (i = 1; i < cf->args->nelts; i++) {
++        *p++ = value[i].len;
++        p = ngx_cpymem(p, value[i].data, value[i].len);
++    }
++
++    scf->alpn.len = len;
++
++    return NGX_CONF_OK;
++
++#else
++    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
++                       "the \"ssl_alpn\" directive requires OpenSSL "
++                       "with ALPN support");
++    return NGX_CONF_ERROR;
++#endif
++}
++
++
++static char *
++ngx_rtmp_ssl_conf_command_check(ngx_conf_t *cf, void *post, void *data)
++{
++#ifndef SSL_CONF_FLAG_FILE
++    return "is not supported on this platform";
++#else
++    return NGX_CONF_OK;
++#endif
++}
+diff --git a/ngx_rtmp_ssl_module.h b/ngx_rtmp_ssl_module.h
+new file mode 100644
+index 000000000..944131975
+--- /dev/null
++++ b/ngx_rtmp_ssl_module.h
+@@ -0,0 +1,65 @@
++
++/*
++ * Copyright (C) Igor Sysoev
++ * Copyright (C) Nginx, Inc.
++ */
++
++
++#ifndef _NGX_RTMP_SSL_H_INCLUDED_
++#define _NGX_RTMP_SSL_H_INCLUDED_
++
++
++#include <ngx_config.h>
++#include <ngx_core.h>
++#include "ngx_rtmp.h"
++
++
++typedef struct {
++    ngx_msec_t       handshake_timeout;
++
++    ngx_flag_t       prefer_server_ciphers;
++
++    ngx_ssl_t        ssl;
++
++    ngx_uint_t       listen;
++    ngx_uint_t       protocols;
++
++    ngx_uint_t       verify;
++    ngx_uint_t       verify_depth;
++
++    ssize_t          builtin_session_cache;
++
++    time_t           session_timeout;
++
++    ngx_array_t     *certificates;
++    ngx_array_t     *certificate_keys;
++
++    ngx_str_t        dhparam;
++    ngx_str_t        ecdh_curve;
++    ngx_str_t        client_certificate;
++    ngx_str_t        trusted_certificate;
++    ngx_str_t        crl;
++    ngx_str_t        alpn;
++
++    ngx_str_t        ciphers;
++
++    ngx_array_t     *passwords;
++    ngx_array_t     *conf_commands;
++
++    ngx_shm_zone_t  *shm_zone;
++
++    ngx_flag_t       session_tickets;
++    ngx_array_t     *session_ticket_keys;
++
++    u_char          *file;
++    ngx_uint_t       line;
++} ngx_rtmp_ssl_conf_t;
++
++
++extern ngx_module_t  ngx_rtmp_ssl_module;
++
++
++void ngx_rtmp_ssl(ngx_rtmp_session_t *s);
++
++
++#endif /* _NGX_RTMP_SSL_H_INCLUDED_ */
+
+From 8ae0cdcbdde6267375194470afece76150f7e1f2 Mon Sep 17 00:00:00 2001
+From: Emmanuel Mathi-Amorim <manny@amorim.ca>
+Date: Mon, 19 Jan 2026 21:38:30 -0500
+Subject: [PATCH 3/3] Add documentation for the ngx_rtmp_ssl_module
+
+---
+ doc/directives.md | 205 +++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 204 insertions(+), 1 deletion(-)
+
+diff --git a/doc/directives.md b/doc/directives.md
+index b415061b6..646a9b044 100644
+--- a/doc/directives.md
++++ b/doc/directives.md
+@@ -135,6 +135,27 @@ Table of Contents
+     * [rtmp_socket_dir](#rtmp_socket_dir)
+ * [Control](#control)
+     * [rtmp_control](#rtmp_control)
++* [SSL](#ssl)
++    * [ssl_handshake_timeout](#ssl_handshake_timeout)
++    * [ssl_certificate](#ssl_certificate)
++    * [ssl_certificate_key](#ssl_certificate_key)
++    * [ssl_password_file](#ssl_password_file)
++    * [ssl_dhparam](#ssl_dhparam)
++    * [ssl_ecdh_curve](#ssl_ecdh_curve)
++    * [ssl_protocols](#ssl_protocols)
++    * [ssl_ciphers](#ssl_ciphers)
++    * [ssl_verify_client](#ssl_verify_client)
++    * [ssl_verify_depth](#ssl_verify_depth)
++    * [ssl_client_certificate](#ssl_client_certificate)
++    * [ssl_trusted_certificate](#ssl_trusted_certificate)
++    * [ssl_prefer_server_ciphers](#ssl_prefer_server_ciphers)
++    * [ssl_session_cache](#ssl_session_cache)
++    * [ssl_session_tickets](#ssl_session_tickets)
++    * [ssl_session_ticket_key](#ssl_session_ticket_key)
++    * [ssl_session_timeout](#ssl_session_timeout)
++    * [ssl_crl](#ssl_crl)
++    * [ssl_conf_command](#ssl_conf_command)
++    * [ssl_alpn](#ssl_alpn)
+ 
+ ## Core
+ #### rtmp
+@@ -1895,4 +1916,186 @@ http {
+ }
+ ```
+ 
+-[More details about control module](control_modul.md)
+\ No newline at end of file
++[More details about control module](control_modul.md)
++
++## SSL
++
++#### ssl_handshake_timeout
++Syntax: `ssl_handshake_timeout time;`  
++Context: rtmp, server  
++
++Specifies a timeout for the SSL handshake to complete. 
++
++#### ssl_certificate
++Syntax: `ssl_certificate file;`  
++Context: rtmp, server  
++
++Specifies a `file` with the certificate in the PEM format for the given virtual server. If intermediate certificates should be specified in addition to a primary certificate, they should be specified in the same file in the following order: the primary certificate comes first, then the intermediate certificates. A secret key in the PEM format may be placed in the same file.
++
++#### ssl_certificate_key
++Syntax: `ssl_certificate_key file;`  
++Context: rtmp, server  
++
++Specifies a `file` with the secret key in the PEM format for the given virtual server.
++
++#### ssl_password_file
++Syntax:	`ssl_password_file file;`  
++Context: rtmp, server  
++
++Specifies a `file` with passphrases for secret keys where each passphrase is specified on a separate line. Passphrases are tried in turn when loading the key. 
++
++#### ssl_dhparam
++Syntax: `ssl_dhparam file;`  
++Context: rtmp, server  
++
++Specifies a `file` with DH parameters for DHE ciphers.
++
++By default no parameters are set, and therefore DHE ciphers will not be used.
++
++#### ssl_ecdh_curve
++Syntax: `ssl_ecdh_curve curve;`  
++Context: rtmp, server  
++
++Specifies a `curve` for ECDHE ciphers.
++
++#### ssl_protocols
++Syntax: `ssl_protocols [SSLv2] [SSLv3] [TLSv1] [TLSv1.1] [TLSv1.2] [TLSv1.3];`  
++Context: rtmp, server  
++
++Enables the specified protocols.
++
++#### ssl_ciphers
++Syntax: `ssl_ciphers ciphers;`  
++Context: rtmp, server  
++
++Specifies the enabled ciphers. The ciphers are specified in the format understood by the OpenSSL library, for example:
++
++```
++ssl_ciphers ALL:!aNULL:!EXPORT56:RC4+RSA:+HIGH:+MEDIUM:+LOW:+SSLv2:+EXP;
++```
++
++The full list can be viewed using the “openssl ciphers” command.
++
++#### ssl_verify_client
++Syntax: `ssl_verify_client on | off | optional | optional_no_ca;`  
++Context: rtmp, server  
++
++Enables verification of client certificates. If an error has occurred during the client certificate verification or a client has not presented the required certificate, the connection is closed.
++
++The `optional` parameter requests the client certificate and verifies it if the certificate is present.
++
++The `optional_no_ca` parameter requests the client certificate but does not require it to be signed by a trusted CA certificate. This is intended for the use in cases when a service that is external to nginx performs the actual certificate verification. The contents of the certificate is accessible through the $ssl_client_cert variable.
++
++#### ssl_verify_depth
++Syntax: `ssl_verify_depth number;`  
++Context: rtmp, server  
++
++Sets the verification depth in the client certificates chain.
++
++#### ssl_client_certificate
++Syntax: `ssl_client_certificate file;`  
++Context: rtmp, server  
++
++Specifies a file with trusted CA certificates in the PEM format used to verify client certificates. The list of certificates will be sent to clients. If this is not desired, the ssl_trusted_certificate directive can be used.
++
++#### ssl_trusted_certificate
++Syntax: `ssl_trusted_certificate file;`  
++Context: rtmp, server  
++
++Specifies a file with trusted CA certificates in the PEM format used to verify client certificates. In contrast to the certificate set by ssl_client_certificate, the list of these certificates will not be sent to clients.
++
++#### ssl_prefer_server_ciphers
++Syntax: `ssl_prefer_server_ciphers on | off;`
++Context: rtmp, server
++
++Specifies that server ciphers should be preferred over client ciphers when the SSLv3 and TLS protocols are used.
++
++#### ssl_session_cache
++Syntax: `ssl_session_cache off | none | [builtin[:size]] [shared:name:size];`  
++Context: rtmp, server  
++
++Sets the types and sizes of caches that store session parameters. A cache can be of any of the following types:
++
++* `off` the use of a session cache is strictly prohibited: nginx explicitly tells a client that sessions may not be reused.  
++* `none` the use of a session cache is gently disallowed: nginx tells a client that sessions may be reused, but does not actually store session parameters in the cache.  
++* `builtin` a cache built in OpenSSL; used by one worker process only. The cache size is specified in sessions. If size is not given, it is equal to 20480 sessions. Use of the built-in cache can cause memory fragmentation.  
++* `shared` a cache shared between all worker processes. The cache size is specified in bytes; one megabyte can store about 4000 sessions. Each shared cache should have an arbitrary name. A cache with the same name can be used in several virtual servers. It is also used to automatically generate, store, and periodically rotate TLS session ticket keys (1.23.2) unless configured explicitly using the ssl_session_ticket_key directive.  
++
++Both cache types can be used simultaneously, for example:
++
++```ssl_session_cache builtin:1000 shared:SSL:10m;```
++
++but using only shared cache without the built-in cache should be more efficient. 
++
++#### ssl_session_tickets
++Syntax: `ssl_session_tickets on | off;`  
++Context: rtmp, server  
++
++Enables or disables session resumption through TLS session tickets.
++
++#### ssl_session_ticket_key
++Syntax:	`ssl_session_ticket_key file;`  
++Context: rtmp, server  
++
++Sets a `file` with the secret key used to encrypt and decrypt TLS session tickets. The directive is necessary if the same key has to be shared between multiple servers. By default, a randomly generated key is used.
++
++If several keys are specified, only the first key is used to encrypt TLS session tickets. This allows configuring key rotation, for example:
++
++```
++ssl_session_ticket_key current.key;
++ssl_session_ticket_key previous.key;
++```
++
++The `file` must contain 80 or 48 bytes of random data and can be created using the following command:
++
++```
++openssl rand 80 > ticket.key
++```
++
++Depending on the file size either AES256 (for 80-byte keys, 1.11.8) or AES128 (for 48-byte keys) is used for encryption. 
++
++#### ssl_session_timeout
++Syntax: `ssl_session_timeout time;`  
++Context: rtmp, server  
++
++Specifies a time during which a client may reuse the session parameters. 
++
++#### ssl_crl
++Syntax: `ssl_crl file;`  
++Context: rtmp, server  
++
++Specifies a `file` with revoked certificates (CRL) in the PEM format used to verify client certificates.
++
++#### ssl_conf_command
++Syntax:	`ssl_conf_command name value;`  
++Context: rtmp, server  
++
++Sets arbitrary OpenSSL configuration commands.
++
++Several ssl_conf_command directives can be specified on the same level:
++
++```
++ssl_conf_command Options PrioritizeChaCha;
++ssl_conf_command Ciphersuites TLS_CHACHA20_POLY1305_SHA256;
++```
++
++These directives are inherited from the previous configuration level if and only if there are no ssl_conf_command directives defined on the current level.
++
++#### ssl_alpn
++Syntax: `ssl_alpn protocol ...;`  
++Context: rtmp, server  
++
++Specifies the list of supported ALPN protocols. One of the protocols must be negotiated if the client uses ALPN:
++
++```
++map $ssl_alpn_protocol $proxy {
++    h2                127.0.0.1:8001;
++    http/1.1          127.0.0.1:8002;
++}
++
++server {
++    listen      12346;
++    proxy_pass  $proxy;
++    ssl_alpn    h2 http/1.1;
++}
++```

@@ -1,0 +1,62 @@
+From 52797bf8ecb379a5ba55244b5bc998c89155a982 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Fr=C3=A9d=C3=A9ric=20Chanal?= <frederic.chanal@ubicast.eu>
+Date: Thu, 8 Dec 2022 16:37:58 +0100
+Subject: [PATCH] Fix `ping_reset` bad check
+
+When an RTMP connection become stall (no more IO), the `ngx_rmtp_ping`
+send a ping request to the client, but during this sending the
+`ping_reset` flag is set to 1 in `ngx_rtmp_send` (because of [1])
+preventing the detection of a not responding connection because in
+`ngx_rmtp_ping()` the `ping_reset` check will then reset the ping
+instead of finalizing the session.
+
+This patch ensure that `ping_reset` is not set to 1 in both
+`ngx_rtmp_recv()` and `ngx_rtmp_send()` when a PING test is ongoing
+`ping_active = 1`
+
+[1] https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/commit/345a00f9a30b460295e2c1dc25e3240e64361814
+---
+ ngx_rtmp_handler.c | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/ngx_rtmp_handler.c b/ngx_rtmp_handler.c
+index 1b13b198f..aba9270bf 100644
+--- a/ngx_rtmp_handler.c
++++ b/ngx_rtmp_handler.c
+@@ -179,12 +179,12 @@ ngx_rtmp_ping(ngx_event_t *pev)
+     ngx_log_debug1(NGX_LOG_DEBUG_RTMP, s->connection->log, 0,
+             "ping: schedule %Mms", cscf->ping_timeout);
+ 
++    s->ping_active = 1;
+     if (ngx_rtmp_send_ping_request(s, (uint32_t)ngx_current_msec) != NGX_OK) {
+         ngx_rtmp_finalize_session(s);
+         return;
+     }
+ 
+-    s->ping_active = 1;
+     ngx_add_timer(pev, cscf->ping_timeout);
+ }
+ 
+@@ -269,7 +269,10 @@ ngx_rtmp_recv(ngx_event_t *rev)
+                 return;
+             }
+ 
+-            s->ping_reset = 1;
++            if (!s->ping_active) {
++                s->ping_reset = 1;
++            }
++
+             ngx_rtmp_update_bandwidth(&ngx_rtmp_bw_in, n);
+             b->last += n;
+             s->in_bytes += n;
+@@ -537,7 +540,9 @@ ngx_rtmp_send(ngx_event_t *wev)
+         }
+ 
+         s->out_bytes += n;
+-        s->ping_reset = 1;
++        if (!s->ping_active) {
++            s->ping_reset = 1;
++        }
+         ngx_rtmp_update_bandwidth(&ngx_rtmp_bw_out, n);
+         s->out_bpos += n;
+         if (s->out_bpos == s->out_chain->buf->last) {
