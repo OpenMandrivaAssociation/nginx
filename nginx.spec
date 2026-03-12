@@ -13,7 +13,7 @@
 Summary:	Robust, small and high performance HTTP and reverse proxy server
 Name:		nginx
 Version:	1.29.6
-Release:	1
+Release:	2
 Group:		System/Servers
 # BSD License (two clause)
 # http://www.freebsd.org/copyright/freebsd-license.html
@@ -30,7 +30,9 @@ Source51:	nginx.service
 Source52:	nginx.logrotate
 Source53:	ssl.conf
 Source54:	nginx.conf
-Source55:	default.conf
+Source55:	compression.conf
+Source56:	realip.conf
+Source57:	default.conf
 Source100:	index.html
 Source101:	poweredby.png
 Source102:	nginx-logo.png
@@ -58,7 +60,6 @@ Patch500:	ngx_brotli-system-libs.patch
 
 BuildRequires:	autoconf
 BuildRequires:	automake
-BuildRequires:	libtool-base
 BuildRequires:	slibtool
 BuildRequires:	make
 BuildRequires:	gd-devel
@@ -203,7 +204,7 @@ install -p -D -m 0644 %{S:51} %{buildroot}%{_unitdir}/nginx.service
 install -p -D -m 0644 %{S:52} %{buildroot}%{_sysconfdir}/logrotate.d/nginx
 install -p -d -m 0755 %{buildroot}%{nginx_confdir}/conf.d
 install -p -m 0644 %{S:53} %{buildroot}%{nginx_confdir}/
-install -p -D -m 0644 %{S:54} %{buildroot}%{nginx_confdir}/
+install -p -D -m 0644 %{S:54} %{S:55} %{S:56} %{buildroot}%{nginx_confdir}/
 install -p -D -m 0644 %{S:54} %{buildroot}%{nginx_confdir}/nginx.conf.default
 install -p -d -m 0755 %{buildroot}%{nginx_home_tmp}
 install -p -d -m 0755 %{buildroot}%{nginx_logdir}
@@ -211,7 +212,7 @@ install -p -d -m 0755 %{buildroot}%{nginx_webroot}
 install -p -d -m 0755 %{buildroot}%{nginx_modulesdir}
 install -p -d -m 0755 %{buildroot}%{nginx_datadir}/modules
 mkdir -p %{buildroot}%{nginx_confdir}/sites-available %{buildroot}%{nginx_confdir}/sites-enabled
-install -p -D -m 0644 %{S:55} %{buildroot}%{nginx_confdir}/sites-available/default.conf
+install -p -D -m 0644 %{S:57} %{buildroot}%{nginx_confdir}/sites-available/default.conf
 ln -s ../sites-available/default.conf %{buildroot}%{nginx_confdir}/sites-enabled/
 mkdir -p %{buildroot}%{nginx_confdir}/http.conf.d
 
@@ -304,6 +305,8 @@ EOF
 %config(noreplace) %{nginx_confdir}/koi-win
 %config(noreplace) %{nginx_confdir}/koi-utf
 %config(noreplace) %{nginx_confdir}/nginx.conf
+%config(noreplace) %{nginx_confdir}/compression.conf
+%config(noreplace) %{nginx_confdir}/realip.conf
 %config(noreplace) %{nginx_confdir}/mime.types
 %config(noreplace) %{nginx_confdir}/ssl.conf
 %dir %{nginx_confdir}/sites-available
