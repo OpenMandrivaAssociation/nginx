@@ -4,13 +4,19 @@ After=network.target remote-fs.target
 
 [Service]
 Type=forking
-PIDFile=/run/nginx.pid
-ExecStartPre=/usr/sbin/nginx -t -c /etc/nginx/nginx.conf
-ExecStart=/usr/sbin/nginx -c /etc/nginx/nginx.conf
-ExecReload=/usr/sbin/nginx -c /etc/nginx/nginx.conf -s reload
-ExecStop=/usr/sbin/nginx -s quit
+RuntimeDirectory=nginx
+PIDFile=/run/nginx/nginx.pid
+ExecStartPre=/usr/bin/chown -R www:www /run/nginx
+ExecStartPre=/usr/bin/nginx -t -c /etc/nginx/nginx.conf
+ExecStart=/usr/bin/nginx -c /etc/nginx/nginx.conf
+ExecReload=/usr/bin/nginx -c /etc/nginx/nginx.conf -s reload
+ExecStop=/usr/bin/nginx -s quit
 TimeoutStopSec=5
 PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateDevices=yes
+ReadWritePaths=/etc/nginx -/etc/letsencrypt
 
 [Install]
 WantedBy=multi-user.target

@@ -13,7 +13,7 @@
 Summary:	Robust, small and high performance HTTP and reverse proxy server
 Name:		nginx
 Version:	1.29.6
-Release:	2
+Release:	3
 Group:		System/Servers
 # BSD License (two clause)
 # http://www.freebsd.org/copyright/freebsd-license.html
@@ -133,15 +133,15 @@ cd ../nginx-module-vts-*
 	--user=www \
 	--group=www \
 	--prefix=%{nginx_datadir} \
-	--sbin-path=%{_sbindir}/nginx \
+	--sbin-path=%{_bindir}/nginx \
 	--conf-path=%{nginx_confdir}/nginx.conf \
 	--error-log-path=%{nginx_logdir}/error.log \
 	--http-log-path=%{nginx_logdir}/access.log \
 	--http-client-body-temp-path=%{nginx_home_tmp}/client_body \
 	--http-proxy-temp-path=%{nginx_home_tmp}/proxy \
 	--http-fastcgi-temp-path=%{nginx_home_tmp}/fastcgi \
-	--pid-path=/run/nginx.pid \
-	--lock-path=/var/lock/subsys/nginx \
+	--pid-path=/run/nginx/nginx.pid \
+	--lock-path=/run/nginx/nginx.lock \
 	--modules-path=%{nginx_modulesdir} \
 	--add-dynamic-module=nginx-rtmp-module-* \
 	--add-dynamic-module=nginx-auth-ldap-* \
@@ -194,7 +194,7 @@ find %{buildroot} -type f -name perllocal.pod -exec rm -f {} \;
 find %{buildroot} -type f -empty -exec rm -f {} \;
 find %{buildroot} -type f -exec chmod 0644 {} \;
 find %{buildroot} -type f -name '*.so' -exec chmod 0755 {} \;
-chmod 0755 %{buildroot}%{_sbindir}/nginx
+chmod 0755 %{buildroot}%{_bindir}/nginx
 
 # Get rid of broken upstream config samples
 rm -rf %{buildroot}%{nginx_confdir}/conf.d
@@ -282,7 +282,7 @@ EOF
 %dir %{nginx_datadir}
 %dir %{nginx_datadir}/modules
 %dir %{nginx_modulesdir}
-%{_sbindir}/nginx
+%{_bindir}/nginx
 %{_mandir}/man3/nginx.3pm*
 %{_mandir}/man8/*
 %{_presetdir}/86-nginx.preset
