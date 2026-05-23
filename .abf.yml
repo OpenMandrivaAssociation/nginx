@@ -6,5 +6,5 @@ sources:
   ngx-brotli-2023.10.09.tar.gz: 5c14b1d503445da180461b75d9ee4eab0f2dba52
   v0.39.tar.gz: 59a973ac4e95da5ed8b390ebe5be0e41aafa9081
   v0.2.5.tar.gz: 40eed7fb668b2d073b66ce31194eb440cb80eca6
-  nginx-1.31.0.tar.gz: f435952e6850d42f98e4d7596bd87dd2cd1b1ee2
   0.9.8.tar.gz: c59869cc96463a1020eab1270c85257c75d86f5e
+  nginx-1.31.1.tar.gz: 0b1160c3c71286c90edce62ab2a626a6e32d6a65
