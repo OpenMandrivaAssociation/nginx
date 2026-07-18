@@ -12,8 +12,8 @@
 
 Summary:	Robust, small and high performance HTTP and reverse proxy server
 Name:		nginx
-Version:	1.31.1
-Release:	2
+Version:	1.31.3
+Release:	1
 Group:		System/Servers
 # BSD License (two clause)
 # http://www.freebsd.org/copyright/freebsd-license.html
@@ -229,7 +229,7 @@ for i in 00-stream 01-mail 05-http_perl 10-http_geoip 10-http_xslt_filter 15-htt
 	PACKAGE="mod-${SERVICE//_/-}"
 	echo "load_module \"%{nginx_modulesdir}/ngx_${SERVICE}_module.so\";" >%{buildroot}%{nginx_datadir}/modules/$i.conf
 	cat >%{specpartsdir}/$SERVICE.specpart <<EOF
-%%%%package $PACKAGE
+%%package $PACKAGE
 Summary:	${SERVICE} module for NGINX
 Group:		Servers
 Requires:	%{name} = %{EVRD}
@@ -240,29 +240,29 @@ EOF
 	fi
 
 	cat >>%{specpartsdir}/$SERVICE.specpart <<EOF
-%%%%description $PACKAGE
+%%description $PACKAGE
 ${SERVICE} module for NGINX
 
-%%%%files $PACKAGE
+%%files $PACKAGE
 %{nginx_modulesdir}/ngx_${SERVICE}_module.so
 %{nginx_datadir}/modules/$i.conf
 EOF
 
 	if [[ "${SERVICE}" == "http_perl" ]]; then
 		cat >>%{specpartsdir}/$SERVICE.specpart <<EOF
-%%%%dir %{perl_vendorarch}/auto/nginx
+%%dir %{perl_vendorarch}/auto/nginx
 %{perl_vendorarch}/nginx.pm
 %{perl_vendorarch}/auto/nginx/nginx.so
 EOF
 	fi
 
 	cat >>%{specpartsdir}/$SERVICE.specpart <<EOF
-%%%%post $PACKAGE
+%%post $PACKAGE
 if [[ \$1 == 1 ]]; then
 	systemctl reload nginx &>/dev/null || :
 fi
 
-%%%%postun $PACKAGE
+%%postun $PACKAGE
 if [[ \$1 == 1 ]]; then
 	systemctl reload nginx &>/dev/null || :
 fi
