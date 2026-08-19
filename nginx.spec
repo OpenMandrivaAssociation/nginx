@@ -12,8 +12,8 @@
 
 Summary:	Robust, small and high performance HTTP and reverse proxy server
 Name:		nginx
-Version:	1.31.3
-Release:	2
+Version:	1.31.4
+Release:	1
 Group:		System/Servers
 # BSD License (two clause)
 # http://www.freebsd.org/copyright/freebsd-license.html
@@ -22,10 +22,10 @@ Url:		https://nginx.net/
 Source0:	http://nginx.org/download/%{name}-%{version}.tar.gz
 Source1:	https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/archive/refs/tags/v1.2.2-r1.tar.gz
 Source2:	https://github.com/kvspb/nginx-auth-ldap/archive/refs/heads/master.tar.gz#/nginx-auth-ldap-2024.04.24.tar.gz
-Source3:	https://github.com/nginx/njs/archive/refs/tags/0.9.8.tar.gz
-Source4:	https://github.com/openresty/headers-more-nginx-module/archive/refs/tags/v0.39.tar.gz
+Source3:	https://github.com/nginx/njs/archive/refs/tags/1.0.0.tar.gz
+Source4:	https://github.com/openresty/headers-more-nginx-module/archive/refs/tags/v0.40.tar.gz
 Source5:	https://github.com/google/ngx_brotli/archive/refs/heads/master.tar.gz#/ngx-brotli-2023.10.09.tar.gz
-Source6:	https://github.com/vozlt/nginx-module-vts/archive/refs/tags/v0.2.5.tar.gz
+Source6:	https://github.com/vozlt/nginx-module-vts/archive/refs/tags/v0.2.7.tar.gz
 Source51:	nginx.service
 Source52:	nginx.logrotate
 Source53:	ssl.conf
@@ -51,6 +51,7 @@ Patch104:	https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/commit/ab050d
 Patch105:	https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/commit/6bd707044a5b3bfa486740d864c683652868d66c.patch
 Patch106:	https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/commit/0bd662e80a52fc50efbe13c757664fca276aec4b.patch
 Patch107:	https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/commit/8ae0cdcbdde6267375194470afece76150f7e1f2.patch
+Patch108:	https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/commit/1194391da90ad3f7b2cdebecbfbf323032ccd98a.patch
 # Patches 200-299: for nginx-auth-ldap
 # Patches 300-399: for njs
 # Patches 400-499: for headers-more
@@ -73,6 +74,7 @@ BuildRequires:	pkgconfig(ldap)
 BuildRequires:	pkgconfig(zlib)
 BuildRequires:	pkgconfig(libbrotlienc)
 BuildRequires:	pkgconfig(libbrotlidec)
+BuildRequires:	quickjs-devel
 BuildRequires:	systemd-macros
 # For _create_ssl_certificate macro
 BuildRequires:	rpm-helper
@@ -128,6 +130,8 @@ cd ../nginx-module-vts-*
 %build
 %serverbuild_hardened
 %set_build_flags
+# njs probes /usr/lib/quickjs; OpenMandriva puts the static libs in %{_libdir}/quickjs
+export CFLAGS="${CFLAGS} -I%{_includedir}/quickjs"
 
 ./configure \
 	--user=www \
@@ -177,7 +181,12 @@ cd ../nginx-module-vts-*
 	--with-mail=dynamic \
 	--with-mail_ssl_module \
 	--with-stream=dynamic \
-	--with-ld-opt="%{build_ldflags} -Wl,-E" # so the perl module finds its symbols
+	--with-ld-opt="%{build_ldflags} -L%{_libdir}/quickjs -Wl,-E" # so the perl module finds its symbols
+
+grep -q 'define NJS_HAVE_QUICKJS' objs/ngx_auto_config.h || {
+	echo "error: njs did not enable the QuickJS engine"
+	exit 1
+}
 
 sed -i -e 's|-Wl,--no-undefined||g' objs/Makefile
 

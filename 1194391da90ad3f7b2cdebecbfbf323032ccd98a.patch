@@ -1,0 +1,31 @@
+From 1194391da90ad3f7b2cdebecbfbf323032ccd98a Mon Sep 17 00:00:00 2001
+From: nomadgeek <hello@nomadgeek.org>
+Date: Mon, 30 Mar 2026 11:09:45 -0400
+Subject: [PATCH] fix null pointer reference in ngx_pnalloc
+
+---
+ ngx_rtmp_proxy_protocol.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/ngx_rtmp_proxy_protocol.c b/ngx_rtmp_proxy_protocol.c
+index 1f27069ef..518949eb1 100644
+--- a/ngx_rtmp_proxy_protocol.c
++++ b/ngx_rtmp_proxy_protocol.c
+@@ -116,13 +116,13 @@ ngx_rtmp_proxy_protocol_recv(ngx_event_t *rev)
+         ngx_inet_set_port(addr.sockaddr, c->proxy_protocol->src_port);
+ 
+         text = ngx_pnalloc(c->pool, NGX_SOCKADDR_STRLEN);
+-        len = ngx_sock_ntop(addr.sockaddr, addr.socklen, text,
+-                            NGX_SOCKADDR_STRLEN, 0);
+-        if (len == 0) {
++        if (text == NULL) {
+             goto failed;
+         }
+ 
+-        if (text == NULL) {
++        len = ngx_sock_ntop(addr.sockaddr, addr.socklen, text,
++                            NGX_SOCKADDR_STRLEN, 0);
++        if (len == 0) {
+             goto failed;
+         }
+ 
