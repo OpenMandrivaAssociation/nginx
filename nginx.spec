@@ -12,7 +12,7 @@
 
 Summary:	Robust, small and high performance HTTP and reverse proxy server
 Name:		nginx
-Version:	1.31.4
+Version:	1.31.5
 Release:	1
 Group:		System/Servers
 # BSD License (two clause)
@@ -22,7 +22,7 @@ Url:		https://nginx.net/
 Source0:	http://nginx.org/download/%{name}-%{version}.tar.gz
 Source1:	https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/archive/refs/tags/v1.2.2-r1.tar.gz
 Source2:	https://github.com/kvspb/nginx-auth-ldap/archive/refs/heads/master.tar.gz#/nginx-auth-ldap-2024.04.24.tar.gz
-Source3:	https://github.com/nginx/njs/archive/refs/tags/1.0.0.tar.gz
+Source3:	https://github.com/nginx/njs/archive/refs/tags/1.0.1.tar.gz
 Source4:	https://github.com/openresty/headers-more-nginx-module/archive/refs/tags/v0.40.tar.gz
 Source5:	https://github.com/google/ngx_brotli/archive/refs/heads/master.tar.gz#/ngx-brotli-2023.10.09.tar.gz
 Source6:	https://github.com/vozlt/nginx-module-vts/archive/refs/tags/v0.2.7.tar.gz
@@ -160,6 +160,8 @@ export CFLAGS="${CFLAGS} -I%{_includedir}/quickjs"
 	--with-http_ssl_module \
 	--with-http_v2_module \
 	--with-http_v3_module \
+	--with-http_json_module \
+	--with-control-api \
 	--with-http_slice_module \
 	--with-http_realip_module \
 	--with-http_addition_module \
