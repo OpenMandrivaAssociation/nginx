@@ -33,3 +33,11 @@ diff -up nginx-1.29.6/conf/mime.types.omv~ nginx-1.29.6/conf/mime.types
      application/xspf+xml                             xspf;
      application/zip                                  zip;
  
+@@ -81,6 +90,7 @@ types {
+     audio/midi                                       mid midi kar;
+     audio/mpeg                                       mp3;
+     audio/ogg                                        ogg;
++    audio/opus                                       opus;
+     audio/x-m4a                                      m4a;
+     audio/x-realaudio                                ra;
+ 
