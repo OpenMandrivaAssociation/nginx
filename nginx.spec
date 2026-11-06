@@ -318,7 +318,7 @@ EOF
 %config(noreplace) %{nginx_confdir}/nginx.conf
 %config(noreplace) %{nginx_confdir}/compression.conf
 %config(noreplace) %{nginx_confdir}/realip.conf
-%config(noreplace) %{nginx_confdir}/mime.types
+%config %{nginx_confdir}/mime.types
 %config(noreplace) %{nginx_confdir}/ssl.conf
 %dir %{nginx_confdir}/sites-available
 %config(noreplace) %{nginx_confdir}/sites-available/default.conf
