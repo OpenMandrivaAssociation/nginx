@@ -13,7 +13,7 @@
 Summary:	Robust, small and high performance HTTP and reverse proxy server
 Name:		nginx
 Version:	1.31.8
-Release:	3
+Release:	4
 Group:		System/Servers
 # BSD License (two clause)
 # http://www.freebsd.org/copyright/freebsd-license.html
@@ -21,7 +21,7 @@ License:	BSD
 Url:		https://nginx.net/
 Source0:	http://nginx.org/download/%{name}-%{version}.tar.gz
 Source1:	https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/archive/refs/tags/v1.2.2-r1.tar.gz
-Source2:	https://github.com/kvspb/nginx-auth-ldap/archive/refs/heads/master.tar.gz#/nginx-auth-ldap-2024.04.24.tar.gz
+Source2:	https://github.com/kvspb/nginx-auth-ldap/archive/refs/tags/v1.2.0.tar.gz#/nginx-auth-ldap-1.2.0.tar.gz
 Source3:	https://github.com/nginx/njs/archive/refs/tags/1.0.2.tar.gz
 Source4:	https://github.com/openresty/headers-more-nginx-module/archive/refs/tags/v0.40.tar.gz
 Source5:	https://github.com/google/ngx_brotli/archive/refs/heads/master.tar.gz#/ngx-brotli-2023.10.09.tar.gz
@@ -224,7 +224,10 @@ install -p -d -m 0755 %{buildroot}%{nginx_modulesdir}
 install -p -d -m 0755 %{buildroot}%{nginx_datadir}/modules
 mkdir -p %{buildroot}%{nginx_confdir}/sites-available %{buildroot}%{nginx_confdir}/sites-enabled
 install -p -D -m 0644 %{S:57} %{buildroot}%{nginx_confdir}/sites-available/default.conf
-ln -s ../sites-available/default.conf %{buildroot}%{nginx_confdir}/sites-enabled/
+# The ENABLED symlink is not part of the payload: as a %config(noreplace) file
+# rpm recreates it on every update after an admin removed it, and the default
+# server then claims :80/:443 from whatever reverse proxy owns them. It is
+# created once in %post, on first install only, and owned as %ghost.
 mkdir -p %{buildroot}%{nginx_confdir}/http.conf.d
 
 install -p -m 0644 %{S:100} %{S:101} %{S:102} %{S:103} %{S:104} %{buildroot}%{nginx_webroot}
@@ -287,6 +290,9 @@ EOF
 
 %post
 %_create_ssl_certificate nginx
+if [ $1 -eq 1 ] && [ ! -e %{nginx_confdir}/sites-enabled/default.conf ] && [ ! -L %{nginx_confdir}/sites-enabled/default.conf ]; then
+	ln -s ../sites-available/default.conf %{nginx_confdir}/sites-enabled/default.conf
+fi
 
 %files
 %doc LICENSE CHANGES
@@ -323,7 +329,7 @@ EOF
 %dir %{nginx_confdir}/sites-available
 %config(noreplace) %{nginx_confdir}/sites-available/default.conf
 %dir %{nginx_confdir}/sites-enabled
-%config(noreplace) %{nginx_confdir}/sites-enabled/default.conf
+%ghost %config(noreplace) %{nginx_confdir}/sites-enabled/default.conf
 %config(noreplace) %{nginx_confdir}/uwsgi_params
 %config(noreplace) %{nginx_confdir}/uwsgi_params.default
 %config(noreplace) %{_sysconfdir}/logrotate.d/nginx

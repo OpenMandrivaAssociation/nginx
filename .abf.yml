@@ -2,9 +2,9 @@ sources:
   nginx-logo.png: a609ff4e27b6236233ea576739a6fb040da4d550
   poweredby.png: b746a5ccb846c857842991dfcea0512f15fe943f
   v1.2.2-r1.tar.gz: f50d493cd8a748d1ee38bd5a79d3ad46119ae64f
-  nginx-auth-ldap-2024.04.24.tar.gz: 540393b14d5839fed86b01bee0b24be0e53ac9f3
   ngx-brotli-2023.10.09.tar.gz: 5c14b1d503445da180461b75d9ee4eab0f2dba52
   v0.40.tar.gz: fd0189f639119285f6debcdb14eaeaf688b4523a
   v0.2.7.tar.gz: 4eb6891485267da3057c3837e08ed33ad51ad744
   1.0.2.tar.gz: 460b5e8d0fe3a3b597103b6871267d67b21bf5ac
   nginx-1.31.8.tar.gz: abe10d433de672a4c1513e1f828d0251b8f3cb96
+  nginx-auth-ldap-1.2.0.tar.gz: 008d2eb823bc744cf26b5c430c196fdd1d777a7a
